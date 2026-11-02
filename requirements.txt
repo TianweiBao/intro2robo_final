@@ -1,0 +1,6 @@
+# conda env "mujoco" (Python 3.11)
+mujoco==3.17.0
+numpy>=2.0
+imageio>=2.30
+imageio-ffmpeg>=0.5
+pillow>=10.0

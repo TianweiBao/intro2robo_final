@@ -1,0 +1,251 @@
+<!--
+  Kinova Gen3 lite (6-DoF) holding a standard manual 1000 uL micropipette in a clamp, with a linear
+  actuator pressing the plunger button and an Intel RealSense D405 wrist camera.
+
+  Arm kinematics, joint limits and torque limits: Kinova ros_kortex
+    kortex_description/arms/gen3_lite/6dof/urdf/gen3_lite_macro.xacro (BSD-3, see assets/gen3_lite/LICENSE).
+  Link masses are Kinova's. Centers of mass and inertias were recomputed from the link meshes
+  (the URDF's inertial origins disagree with the meshes for most links).
+  Collision geometry: hand-fitted capsules (meshes are visual only) to keep simulation fast.
+
+  Collision bit masks used throughout the project (contype / conaffinity):
+    1 ENV   bench, tube rack, dish     contype=1  conaffinity=14 (ARM|TOOL|TIP)
+    2 ARM   robot links                contype=2  conaffinity=5  (ENV|TOOL)
+    4 TOOL  pipette, clamp, camera     contype=4  conaffinity=3  (ENV|ARM)
+    8 TIP   the pipette tip            contype=8  conaffinity=3  (ENV|ARM)
+
+  Tool layout. A mounting plate on the flange holds the pipette vertically, perpendicular to the
+  flange axis and 75 mm in front of the flange face. Body "pipette" has its origin on the pipette
+  axis level with the flange center, +z pointing down the pipette toward the tip and +x pointing
+  away from the flange (the side the camera is on):
+    z = -0.170 .. -0.070   linear actuator; its rod pushes the plunger button
+    z = -0.052             plunger button top at rest; first stop +10 mm, blow-out +13 mm
+    z = -0.017 ..  0.103   pipette handle, held by clamps at z = 0 and z = 0.070
+    z =  0.103 ..  0.188   lower shaft
+    z =  0.203             nozzle end (site "nozzle")
+    z =  0.191 ..  0.267   1000 uL tip, permanently attached; site "tip_end" at its end
+  Sites "nozzle" and "tip_end" use this frame: the controller keeps their z axis pointing straight
+  down and their x axis pointing in the commanded heading.
+-->
+<mujoco model="gen3_lite_pipette">
+  <compiler angle="radian" meshdir="assets/gen3_lite" autolimits="true"/>
+  <option integrator="implicitfast"/>
+
+  <default>
+    <default class="gen3_lite">
+      <joint axis="0 0 1" damping="0.5"/>
+      <default class="large_joint">
+        <joint armature="0.08"/>
+      </default>
+      <default class="small_joint">
+        <joint armature="0.04"/>
+      </default>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2" material="kinova_white"/>
+      </default>
+      <default class="collision">
+        <geom type="capsule" group="3" contype="2" conaffinity="5" rgba="0.9 0.4 0.4 0.5"/>
+      </default>
+      <default class="large_actuator">
+        <position kp="300" kv="30"/>
+      </default>
+      <default class="small_actuator">
+        <position kp="120" kv="8"/>
+      </default>
+    </default>
+
+    <default class="tool">
+      <geom contype="4" conaffinity="3" group="2"/>
+      <default class="tool_visual">
+        <geom contype="0" conaffinity="0" group="2" density="0"/>
+      </default>
+      <default class="tip">
+        <geom contype="8" conaffinity="3" group="2" material="tip_pp"/>
+      </default>
+      <default class="tip_liquid">
+        <geom type="cylinder" contype="0" conaffinity="0" group="1" density="0" material="liquid"/>
+      </default>
+      <default class="plunger_slide">
+        <joint type="slide" axis="0 0 1" armature="0.05" damping="2"/>
+      </default>
+      <default class="plunger_motor">
+        <position kp="400" kv="25"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <material name="kinova_white" rgba="0.80 0.82 0.82 1" specular="0.4" shininess="0.4"/>
+    <material name="adapter_gray" rgba="0.18 0.19 0.21 1" specular="0.2"/>
+    <material name="aluminum" rgba="0.70 0.72 0.75 1" specular="0.6" shininess="0.5"/>
+    <material name="actuator_gray" rgba="0.36 0.38 0.41 1" specular="0.4"/>
+    <material name="clamp_black" rgba="0.10 0.10 0.11 1" specular="0.3"/>
+    <material name="pipette_white" rgba="0.94 0.94 0.92 1" specular="0.5" shininess="0.6"/>
+    <material name="pipette_gray" rgba="0.62 0.64 0.67 1" specular="0.4"/>
+    <material name="plunger_blue" rgba="0.12 0.30 0.78 1" specular="0.4"/>
+    <material name="camera_black" rgba="0.08 0.08 0.09 1" specular="0.3"/>
+    <material name="lens_glass" rgba="0.02 0.02 0.03 1" specular="0.9" shininess="0.9"/>
+    <material name="tip_pp" rgba="0.94 0.95 0.96 0.55" specular="0.5" shininess="0.7"/>
+    <material name="liquid" rgba="1 1 1 1" specular="0.15" shininess="0.2"/>
+
+    <mesh name="base_link" file="base_link.stl"/>
+    <mesh name="shoulder_link" file="shoulder_link.stl"/>
+    <mesh name="arm_link" file="arm_link.stl"/>
+    <mesh name="forearm_link" file="forearm_link.stl"/>
+    <mesh name="lower_wrist_link" file="lower_wrist_link.stl"/>
+    <mesh name="upper_wrist_link" file="upper_wrist_link.stl"/>
+    <!-- lower shaft: r = 11 mm at z = 0.103 tapering to 5.5 mm at z = 0.188 (pipette frame) -->
+    <mesh name="pipette_shaft" vertex="
+       0.0110  0.0000 0.103   0.0078  0.0078 0.103   0.0000  0.0110 0.103  -0.0078  0.0078 0.103
+      -0.0110  0.0000 0.103  -0.0078 -0.0078 0.103   0.0000 -0.0110 0.103   0.0078 -0.0078 0.103
+       0.0055  0.0000 0.188   0.0039  0.0039 0.188   0.0000  0.0055 0.188  -0.0039  0.0039 0.188
+      -0.0055  0.0000 0.188  -0.0039 -0.0039 0.188   0.0000 -0.0055 0.188   0.0039 -0.0039 0.188"/>
+    <!-- nozzle (tip cone): r = 4.0 mm at z = 0.188 to 3.0 mm at z = 0.203 -->
+    <mesh name="nozzle_cone" vertex="
+       0.0040  0.0000 0.188   0.0028  0.0028 0.188   0.0000  0.0040 0.188  -0.0028  0.0028 0.188
+      -0.0040  0.0000 0.188  -0.0028 -0.0028 0.188   0.0000 -0.0040 0.188   0.0028 -0.0028 0.188
+       0.0030  0.0000 0.203   0.0021  0.0021 0.203   0.0000  0.0030 0.203  -0.0021  0.0021 0.203
+      -0.0030  0.0000 0.203  -0.0021 -0.0021 0.203   0.0000 -0.0030 0.203   0.0021 -0.0021 0.203"/>
+    <!-- 1000 uL tip in its own frame (origin at the top opening, +z toward the end, 76 mm long) -->
+    <mesh name="tip_body" vertex="
+       0.0038  0.0000 0.010   0.0027  0.0027 0.010   0.0000  0.0038 0.010  -0.0027  0.0027 0.010
+      -0.0038  0.0000 0.010  -0.0027 -0.0027 0.010   0.0000 -0.0038 0.010   0.0027 -0.0027 0.010
+       0.0034  0.0000 0.041   0.0024  0.0024 0.041   0.0000  0.0034 0.041  -0.0024  0.0024 0.041
+      -0.0034  0.0000 0.041  -0.0024 -0.0024 0.041   0.0000 -0.0034 0.041   0.0024 -0.0024 0.041
+       0.0005  0.0000 0.076   0.0004  0.0004 0.076   0.0000  0.0005 0.076  -0.0004  0.0004 0.076
+      -0.0005  0.0000 0.076  -0.0004 -0.0004 0.076   0.0000 -0.0005 0.076   0.0004 -0.0004 0.076"/>
+  </asset>
+
+  <worldbody>
+    <body name="base_link" childclass="gen3_lite">
+      <inertial pos="0.00244324 0.00015573 0.0861674" quat="0.999765 0.000276222 -0.0211881 0.00451385"
+        mass="1.14608" diaginertia="0.0033632 0.003311 0.000766919"/>
+      <geom class="visual" mesh="base_link"/>
+      <geom class="collision" type="cylinder" size="0.040 0.058" pos="0 0 0.064"/>
+
+      <body name="shoulder_link" pos="0 0 0.12825" gravcomp="1">
+        <inertial pos="0 -0.00038 0.07003" quat="0.70737 0.01486 -0.01488 0.70653" mass="0.95974"
+          diaginertia="0.00210587 0.00202653 0.000654033"/>
+        <joint name="joint_1" class="large_joint" range="-2.68 2.68"/>
+        <geom class="visual" mesh="shoulder_link"/>
+        <geom class="collision" size="0.0395" fromto="0 0 0.02 0 0 0.115"/>
+
+        <body name="arm_link" pos="0 -0.03 0.115" quat="0.7071068 0.7071068 0 0" gravcomp="1">
+          <inertial pos="0 0.14007 0.03015" quat="0.49997 0.50003 -0.50005 0.49995" mass="1.17756"
+            diaginertia="0.0138148 0.0135809 0.000638926"/>
+          <joint name="joint_2" class="large_joint" range="-2.61 2.61"/>
+          <geom class="visual" mesh="arm_link"/>
+          <geom class="collision" size="0.0395" fromto="0 0 0.028 0 0.28 0.028"/>
+
+          <body name="forearm_link" pos="0 0.28 0" quat="0 1 0 0" gravcomp="1">
+            <inertial pos="0 -0.05351 0.02415" quat="0.49427 0.50555 -0.5057 0.49435" mass="0.59768"
+              diaginertia="0.00171177 0.00163368 0.000327741"/>
+            <joint name="joint_3" class="large_joint" range="-2.61 2.61"/>
+            <geom class="visual" mesh="forearm_link"/>
+            <geom class="collision" size="0.040" fromto="0 0 0.021 0 -0.105 0.020"/>
+
+            <body name="lower_wrist_link" pos="0 -0.14 0.02" quat="0.7071068 0.7071068 0 0" gravcomp="1">
+              <inertial pos="0.00015 0 0.06469" quat="0.99939 -0.00003 0.03488 -0.00059" mass="0.52693"
+                diaginertia="0.000920185 0.000895754 0.000247993"/>
+              <joint name="joint_4" class="small_joint" range="-2.6 2.6"/>
+              <geom class="visual" mesh="lower_wrist_link"/>
+              <geom class="collision" size="0.0327" fromto="0 0 0.0 0 0 0.105"/>
+
+              <body name="upper_wrist_link" pos="0.0285 0 0.105" quat="0.7071068 0 0.7071068 0" gravcomp="1">
+                <inertial pos="-0.04688 0 0.02836" quat="0.00048 0.72494 0.00042 0.68881" mass="0.58097"
+                  diaginertia="0.00121579 0.0011924 0.000275516"/>
+                <joint name="joint_5" class="small_joint" range="-2.53 2.53"/>
+                <geom class="visual" mesh="upper_wrist_link"/>
+                <geom class="collision" size="0.0327" fromto="0 0 0.0285 -0.105 0 0.0285"/>
+
+                <!-- Tool flange; everything below rotates with joint_6. -->
+                <body name="end_effector_link" pos="-0.105 0 0.0285" quat="0.7071068 0 -0.7071068 0" gravcomp="1">
+                  <joint name="joint_6" class="small_joint" range="-2.6 2.6"/>
+                  <site name="flange" pos="0 0 0" size="0.004" group="4"/>
+                  <!-- flange adapter (sleeves over the wrist output like Kinova's gripper) -->
+                  <geom name="adapter" class="tool" type="cylinder" size="0.0345 0.0215" pos="0 0 0.0215"
+                    material="adapter_gray" mass="0.05"/>
+
+                  <body name="pipette" pos="0 0 0.075" xyaxes="0 0 1 0 -1 0" gravcomp="1">
+                    <!-- mounting plate, actuator and clamps -->
+                    <geom name="mount_plate" class="tool" type="box" size="0.003 0.025 0.145" pos="-0.029 0 -0.025"
+                      material="aluminum" mass="0.05"/>
+                    <geom name="actuator" class="tool" type="box" size="0.012 0.012 0.05" pos="0 0 -0.12"
+                      material="actuator_gray" mass="0.06"/>
+                    <geom name="actuator_bracket" class="tool" type="box" size="0.007 0.014 0.008" pos="-0.019 0 -0.10"
+                      material="clamp_black" mass="0.005"/>
+                    <geom name="clamp_upper" class="tool" type="box" size="0.0225 0.021 0.007" pos="-0.0035 0 0"
+                      material="clamp_black" mass="0.01"/>
+                    <geom name="clamp_lower" class="tool" type="box" size="0.0225 0.021 0.007" pos="-0.0035 0 0.07"
+                      material="clamp_black" mass="0.01"/>
+                    <!-- manual pipette -->
+                    <geom name="pipette_handle" class="tool" type="cylinder" size="0.015 0.06" pos="0 0 0.043"
+                      material="pipette_white" mass="0.09"/>
+                    <geom name="ejector_button" class="tool_visual" type="box" size="0.004 0.005 0.007"
+                      pos="0.006 0.012 -0.024" material="pipette_gray"/>
+                    <geom name="pipette_shaft" class="tool" type="mesh" mesh="pipette_shaft" material="pipette_gray"
+                      mass="0.025"/>
+                    <geom name="ejector_sleeve" class="tool_visual" type="cylinder" size="0.0066 0.009"
+                      pos="0 0 0.179" material="pipette_white"/>
+                    <geom name="nozzle" class="tool" type="mesh" mesh="nozzle_cone" material="pipette_gray" mass="0.005"/>
+                    <site name="nozzle" pos="0 0 0.203" size="0.0015" rgba="0 1 0 1" group="4"/>
+                    <site name="tip_end" pos="0 0 0.267" size="0.0015" rgba="1 0 0 1" group="4"/>
+
+                    <!-- plunger + actuator rod: 0 = rest, 10 mm = first stop (1000 uL), 13 mm = blow-out -->
+                    <body name="plunger" gravcomp="1">
+                      <joint name="plunger" class="plunger_slide" range="0 0.013"/>
+                      <geom name="actuator_rod" class="tool_visual" type="cylinder" size="0.0025 0.015"
+                        pos="0 0 -0.070" material="aluminum"/>
+                      <geom name="actuator_pad" class="tool_visual" type="cylinder" size="0.007 0.0015"
+                        pos="0 0 -0.0535" material="actuator_gray"/>
+                      <geom name="plunger_button" class="tool_visual" type="cylinder" size="0.007 0.005"
+                        pos="0 0 -0.047" material="plunger_blue"/>
+                      <geom name="plunger_stem" class="tool_visual" type="cylinder" size="0.0035 0.0125"
+                        pos="0 0 -0.0295" material="pipette_white" mass="0.01" density="1000"/>
+                    </body>
+
+                    <!-- 1000 uL tip, permanently on the nozzle -->
+                    <body name="tip" pos="0 0 0.191">
+                      <geom name="tip_collar" class="tip" type="cylinder" size="0.0042 0.005" pos="0 0 0.005" mass="0.0007"/>
+                      <geom name="tip_body" class="tip" type="mesh" mesh="tip_body" mass="0.0005"/>
+                      <geom name="tip_liquid0" class="tip_liquid" size="0.0006 0.006" pos="0 0 0.070" rgba="1 1 1 0"/>
+                      <geom name="tip_liquid1" class="tip_liquid" size="0.0015 0.006" pos="0 0 0.058" rgba="1 1 1 0"/>
+                      <geom name="tip_liquid2" class="tip_liquid" size="0.0024 0.0055" pos="0 0 0.0465" rgba="1 1 1 0"/>
+                      <geom name="tip_liquid3" class="tip_liquid" size="0.0029 0.0145" pos="0 0 0.0265" rgba="1 1 1 0"/>
+                    </body>
+
+                    <!-- Intel RealSense D405 (42 x 42 x 23 mm, ~60 g) on the lower clamp, on the far side of
+                         the pipette from the robot. Tilted 10 deg toward the pipette so the tip end sits just
+                         below the image center; image "up" points away from the pipette. -->
+                    <geom name="camera_bracket" class="tool" type="box" size="0.006 0.010 0.004" pos="0.024 0 0.081"
+                      material="clamp_black" mass="0.005"/>
+                    <body name="d405" pos="0.050 0 0.095" euler="0 -0.17453 0">
+                      <geom name="d405_body" class="tool" type="box" size="0.021 0.021 0.0115" material="camera_black"
+                        mass="0.06"/>
+                      <geom name="d405_lens_left" class="tool_visual" type="cylinder" size="0.0045 0.0006"
+                        pos="0 0.009 0.0116" material="lens_glass"/>
+                      <geom name="d405_lens_right" class="tool_visual" type="cylinder" size="0.0045 0.0006"
+                        pos="0 -0.009 0.0116" material="lens_glass"/>
+                      <!-- D405 color/depth FOV ~87 x 58 deg; 1280x720 with fovy=58 gives ~89 deg horizontal. -->
+                      <camera name="wrist" pos="0 0.009 0.0125" xyaxes="0 1 0 1 0 0" fovy="58" resolution="1280 720"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="joint_1" class="large_actuator" joint="joint_1" ctrlrange="-2.68 2.68" forcerange="-10 10"/>
+    <position name="joint_2" class="large_actuator" joint="joint_2" ctrlrange="-2.61 2.61" forcerange="-14 14"/>
+    <position name="joint_3" class="large_actuator" joint="joint_3" ctrlrange="-2.61 2.61" forcerange="-10 10"/>
+    <position name="joint_4" class="small_actuator" joint="joint_4" ctrlrange="-2.6 2.6" forcerange="-7 7"/>
+    <position name="joint_5" class="small_actuator" joint="joint_5" ctrlrange="-2.53 2.53" forcerange="-7 7"/>
+    <position name="joint_6" class="small_actuator" joint="joint_6" ctrlrange="-2.6 2.6" forcerange="-7 7"/>
+    <position name="plunger" class="plunger_motor" joint="plunger" ctrlrange="0 0.013" forcerange="-40 40"/>
+  </actuator>
+</mujoco>
