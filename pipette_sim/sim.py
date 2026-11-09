@@ -109,6 +109,8 @@ class PipetteSim:
             else:
                 c.volume, c.rgb = float(vols[TUBES.index(name)]), np.array(S.LIQUID_COLORS[self.tube_colors[name]])
             self.visuals.update_container(c)
+            if name in TUBES:
+                self.set_target_ring_color(name, c.rgb)
 
         self.tip_volume = 0.0
         self.tip_rgb = np.zeros(3)
@@ -121,6 +123,14 @@ class PipetteSim:
 
     def tube_with(self, color: str) -> str:
         return next(t for t, c in self.tube_colors.items() if c == color)
+
+    def set_target_ring_color(self, tube: str, rgb) -> None:
+        """Set a tube's visual target ring color (non-colliding, for RGB perception only)."""
+        if tube not in TUBES:
+            raise ValueError(f"Expected one of {TUBES}, got {tube!r}")
+        rgba = self.model.geom(f"{tube}_target_ring").rgba
+        rgba[:3] = np.asarray(rgb, float)
+        rgba[3] = 1.0
 
     @property
     def source_tube(self) -> str:

@@ -1,0 +1,164 @@
+RGB Camera Implementation Roadmap
+=================================
+
+Purpose
+-------
+Build an RGB-camera perception path that lets the Kinova Gen3 lite identify a requested
+red, green, or blue source tube, align the pipette with its colored opening ring, and
+perform the existing aspirate/transfer/dispense task safely.
+
+Current state
+-------------
+- The MuJoCo scene has three named tubes, RGB wrist and side cameras, domain
+  randomization, collision checking, and a scripted transfer controller.
+- The scripted controller currently uses privileged simulator state (sim.source_tube)
+  to choose a source tube.
+- pipette_sim/basin_vision.py detects red, green, and blue regions with HSV segmentation.
+  It returns each region's color, bounding box, centroid, and area.
+- A camera-aware BasinObservation adds camera name, timestamp, image coordinates, and an
+  explainable confidence score. Tube identity and robot-frame coordinates remain unset until the
+  association and calibration stages.
+- scripts/webcam_basin_demo.py proves the detector on a laptop webcam, but it does not
+  know which region is a tube or where that tube is in robot coordinates.
+- The intended physical target is a colored ring around each tube opening. This is a more
+  repeatable visual target than the liquid surface itself.
+
+End-to-end design
+-----------------
+
+    Side camera: identify target tube + coarse location
+            |
+            v
+    Calibration: image target -> robot-frame tube opening
+            |
+            v
+    Wrist camera: refine alignment above the colored ring
+            |
+            v
+    Motion controller: approach, descend, aspirate, verify
+
+Important interface rule
+------------------------
+Keep vision, calibration, and motion control separate:
+
+- Vision works in image coordinates and reports detected colored regions.
+- Calibration converts approved image detections into positions in the robot base frame.
+- Motion control receives only an approved target pose and safety status.
+
+Suggested common result object:
+
+    BasinObservation(
+        color="red",
+        image_center_px=(420, 281),
+        bbox_px=(380, 240, 80, 82),
+        area_px=4200,
+        confidence=0.93,
+        camera="side",
+        tube_name=None,
+        position_base_m=None,
+    )
+
+Note: MuJoCo renders RGB images, while OpenCV webcam images are BGR. Convert a MuJoCo
+frame from RGB to BGR before passing it to the existing OpenCV detector.
+
+Roadmap
+-------
+
+1. Formalize the perception interface [COMPLETE]
+   Goal: Establish a stable contract from image processing to robot logic.
+   Delivered: BasinObservation with color, image position, area/confidence, camera name,
+   timestamp, optional tube name, and optional robot-frame position. The webcam demo displays
+   confidence while tube association and calibration remain future work.
+
+2. Add colored rings to the simulated tube openings [COMPLETE]
+   Goal: Represent the planned physical target in MuJoCo.
+   Delivered: Thin red, green, and blue annular markers centered on the three tube openings,
+   with colors synchronized to tube liquid assignments and randomization.
+
+3. Run HSV vision on simulator camera images [COMPLETE]
+   Goal: Verify that the real detector works on the project's own rendered views.
+   Delivered: scripts/sim_basin_vision_demo.py renders side or wrist views, converts RGB to BGR
+   through the reusable observe_rgb_frame() adapter, annotates observations, saves an image, and
+   prints detections beside known simulator tube colors. Tests cover RGB/BGR conversion and
+   simulator rendering when an offscreen OpenGL backend is available.
+
+4. Associate each detection with a tube [COMPLETE]
+   Goal: Turn "blue region" into "tube_2 contains blue."
+   Delivered: A stateless image-space association layer selects one aligned red/green/blue ring
+   row, maps it left-to-right to tube_1..tube_3, and returns an explicit invalid result for missing
+   or ambiguous evidence. The simulator demo displays its selected assignments, while tests verify
+   nominal and randomized mappings against simulator truth.
+
+5. Test across randomized simulation scenes [COMPLETE]
+   Goal: Quantify robustness before relying on vision for control.
+   Delivered: scripts/evaluate_sim_vision.py evaluates independently seeded randomized scenes and
+   writes a Markdown summary, CSV episode table, and optional annotated PNG/JSON failure artifacts.
+   It separately reports complete correct mappings, safe invalid results, and wrong valid mappings.
+   Initial baseline (`--episodes 100 --seed 0`): 70% correct mappings, 30% safe invalid results,
+   and 0% wrong valid mappings. This establishes an evaluation/safety baseline, not real-robot
+   readiness; later work should improve the usable mapping rate without reintroducing wrong targets.
+
+6. Use vision-selected source tubes with scripted motion
+   Goal: Eliminate privileged source selection while retaining the known-good controller.
+   Deliverable: A vision-aware task entry point:
+
+       requested color -> side-camera detection -> inferred tube -> scripted aspiration
+
+   Keep transfer and dispensing scripted during this stage.
+
+7. Calibrate physical cameras
+   Goal: Convert image targets to robot-frame targets.
+   Deliverable:
+   - Intrinsic calibration for the fixed side camera and wrist D405.
+   - Side-camera pose in the robot-base frame.
+   - Wrist-camera hand-eye transform relative to the robot/tool frame.
+   - Calibration validation against known tube/ring centers, reported in millimeters.
+
+8. Add closed-loop wrist-camera alignment
+   Goal: Center the pipette precisely over the selected colored ring before descent.
+   Deliverable: Use the ring's offset from the wrist-image target position to command small
+   lateral corrections. Use D405 depth only within its supported working range. Stop if the
+   ring cannot be confidently detected.
+
+9. Add safety gates and state-machine integration
+   Goal: Prevent vision errors from causing unsafe pipette motion.
+   Deliverable: Require all of the following before aspiration:
+   - one high-confidence requested-color detection;
+   - location within the expected rack region;
+   - valid calibrated robot-frame target;
+   - robot at a safe hover height;
+   - wrist-camera confirmation before descent;
+   - no collision/contact fault.
+
+   Failure behavior: remain at a safe hover or return to ready pose and report the reason.
+
+10. Validate with physical hardware
+    Goal: Establish repeatable real-world operation.
+    Deliverable: Repeated trials with colored rings under varied lighting, reflections,
+    tube placement error, partial occlusions, and deliberately missing/incorrect markers.
+    Log detection confidence, alignment error, selection accuracy, spills, and contacts.
+
+11. Consider learned policies after the baseline is reliable
+    Goal: Use the HSV/calibration/controller pipeline as an explainable benchmark and
+    demonstration generator.
+    Deliverable: Compare behavior cloning or PPO against the calibrated baseline using
+    image observations and the same safety and success metrics.
+
+Recommended order of near-term work
+-----------------------------------
+1. Add colored rings to the simulator.
+2. Build a simulator vision demo using the existing HSV detector.
+3. Test correct color-to-tube selection over a defined randomized scene set.
+4. Replace sim.source_tube with vision-selected source-tube logic in a scripted simulation run.
+5. Build the physical ring targets and validate fixed-camera detection.
+6. Calibrate the physical camera-to-robot relationship.
+7. Add wrist-camera visual alignment before the pipette descends.
+
+Success criteria by stage
+-------------------------
+- Perception: detects intended colored rings while rejecting small/noise regions.
+- Source selection: chooses the requested color's tube reliably in randomized scenes.
+- Geometry: camera-derived tube center agrees with measured robot-frame center within a
+  tolerance suitable for the tube opening and pipette tip.
+- Alignment: wrist-camera feedback brings the tip over the ring before descent.
+- Task: performs 1000 uL aspiration and dispense without spill, wrong-tube draw, or contact.

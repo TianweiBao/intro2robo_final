@@ -6,6 +6,7 @@ Regenerate with `python scripts/build_scene.py` after changing SceneConfig.
 Names used at runtime:
   containers  tube_1..tube_3 (left to right as seen from the front of the bench) and dish; each has
               a site "<name>_floor" at its lowest inner point and a liquid geom "<name>_liquid"
+  target rings "<name>_target_ring" are visual-only colored annuli at tube openings
   bodies      tube_rack, dish
   cameras     wrist (on the robot), side (fixed, for the policy), overview and top (documentation)
 """
@@ -147,10 +148,13 @@ def _tube_rack(cfg: SceneConfig) -> list[str]:
     for i in range(S.N_TUBES):
         name = f"tube_{i + 1}"
         tx, ty = S.tube_xy(i)
+        ring_rgb = S.LIQUID_COLORS[cfg.tube_colors[i]]
         out += [
             f'<geom name="{name}_wall" class="env_vis" type="mesh" mesh="tube_shell" pos="{_f(tx, ty, cone_top)}" material="pp_clear"/>',
             f'<geom class="env_vis" type="mesh" mesh="tube_cone_outer" pos="{_f(tx, ty, cone_top)}" material="pp_clear"/>',
             f'<geom name="{name}_cone" class="env" type="mesh" mesh="tube_cone_inner" pos="{_f(tx, ty, cone_top)}"/>',
+            f'<geom name="{name}_target_ring" class="env_vis" type="mesh" mesh="tube_target_ring" '
+            f'pos="{_f(tx, ty, rim - S.TUBE_TARGET_RING_HEIGHT / 2)}" rgba="{_f(*ring_rgb, 1)}"/>',
             f'<site name="{name}_floor" pos="{_f(tx, ty, floor)}" size="0.002" group="4"/>',
         ]
         out += _liquid(name, spec, cfg.tube_volume_ul, tx, ty, floor, S.LIQUID_COLORS[cfg.tube_colors[i]])
@@ -187,6 +191,8 @@ def build_scene_xml(cfg: SceneConfig | None = None) -> str:
     }
     mesh_xml = [f'<mesh name="{k}" vertex="{_f(*v)}"/>' for k, v in meshes.items()]
     mesh_xml.append(_shell_mesh("tube_shell", tube.radius + S.TUBE_WALL, tube.radius, tube.depth - tube.cone_height))
+    mesh_xml.append(_shell_mesh("tube_target_ring", tube.radius + S.TUBE_WALL + S.TUBE_TARGET_RING_WIDTH,
+                                tube.radius + S.TUBE_WALL, S.TUBE_TARGET_RING_HEIGHT))
     mesh_xml.append(_shell_mesh("dish_shell", S.DISH.radius + S.DISH_WALL, S.DISH.radius, S.DISH.depth, n=48))
     r_out = S.DISH.radius + S.DISH_WALL
     mesh_xml.append(_shell_mesh("dish_trim", r_out + 0.0015, r_out + 0.0002, 0.004, n=48))
