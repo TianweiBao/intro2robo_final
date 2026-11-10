@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<robot name="pipette" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<xacro:include filename="$(find pipette_description)/urdf/materials.xacro" />
+<xacro:include filename="$(find pipette_description)/urdf/pipette.trans" />
+<xacro:include filename="$(find pipette_description)/urdf/pipette.gazebo" />
+<link name="base_link">
+  <inertial>
+    <origin xyz="0.0028268644540753907 0.0012822534454268433 0.033929532361773415" rpy="0 0 0"/>
+    <mass value="4.0602633426209165"/>
+    <inertia ixx="0.009774" iyy="0.009135" izz="0.005158" ixy="0.000162" iyz="0.001251" ixz="-0.000849"/>
+  </inertial>
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://pipette_description/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://pipette_description/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+</robot>
