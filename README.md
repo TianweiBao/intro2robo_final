@@ -27,6 +27,76 @@ python scripts/build_scene.py       # regenerate models/scene.xml after changing
 - Options for `view_scene.py`: `--colors blue` picks the liquids, `--speed 2` plays faster, and running it
   without `--demo` just opens the scene for browsing.
 
+## Webcam color-basins demo
+
+`scripts/webcam_basin_demo.py` is a small real-camera prototype for the future perception path. It
+identifies every sufficiently large **red**, **green**, and **blue** region in a laptop-webcam image
+using HSV segmentation, draws a labelled bounding box around each region, and shows the currently
+detected colors. Each label also displays an explainable 0--1 contour-quality confidence score
+(larger, compact, fully visible regions score higher). It is intentionally separate from robot
+control and can later be given frames from the simulator or a robot camera.
+
+```bash
+conda activate mujoco
+pip install -r requirements.txt
+python scripts/webcam_basin_demo.py
+```
+
+Press `q` or `Esc` to close the camera window. Use `--camera 1` to select another camera and
+`--min-area 800` to ignore smaller colored objects (the default is 500 pixels). The fixed HSV ranges
+are defined in `pipette_sim/basin_vision.py`; this first demo is intended for visibly colored test
+objects and does not require physical basins.
+
+The reusable vision module exposes a low-level `BasinDetection` for HSV contours and a higher-level
+`BasinObservation` carrying the source camera, capture timestamp, image position, confidence, and
+future-facing tube/robot-position fields. This keeps image segmentation separate from calibration
+and robot motion logic.
+
+### Simulator camera-vision demo
+
+Run the same HSV pipeline on a MuJoCo-rendered camera image (rather than a laptop webcam):
+
+```bash
+python scripts/sim_basin_vision_demo.py
+python scripts/sim_basin_vision_demo.py --randomize --seed 0 --show
+```
+
+The default side-camera run saves `outputs/sim_basin_vision_side.png` with detection boxes and
+confidence scores. Use `--camera wrist` to inspect the wrist view. MuJoCo renders RGB images while
+OpenCV uses BGR, so the reusable `observe_rgb_frame()` adapter performs the required conversion.
+For the side camera, the demo also selects the aligned colored ring row and reports the inferred
+left-to-right `tube_1` through `tube_3` color assignment. The association deliberately reports an
+invalid result when a complete, confident rack row cannot be identified.
+
+### Randomized vision evaluation
+
+Measure detection and tube-association robustness over reproducible randomized scenes:
+
+```bash
+python scripts/evaluate_sim_vision.py --episodes 100 --seed 0
+```
+
+The evaluation saves `outputs/vision_eval_summary.md` and `outputs/vision_eval_results.csv`. It
+distinguishes a correct mapping, a **safe invalid** result, and a **wrong valid** mapping. By
+default, up to 20 annotated PNG/JSON failure pairs are saved in `outputs/vision_eval_failures/`.
+Use `--no-save-failures` for a report-only run.
+
+### Running later from a normal Windows Command Prompt
+
+For each new Command Prompt window, first make Conda available, then activate the project
+environment and start the demo:
+
+```bat
+%USERPROFILE%\miniconda3\Scripts\activate.bat
+conda activate mujoco
+cd "C:\Users\alecc\OneDrive - Duke University\Intro to Robotics\Final Project\intro2robo_final"
+python scripts\webcam_basin_demo.py
+```
+
+If Miniconda was installed somewhere other than `%USERPROFILE%\miniconda3`, replace that first path
+with its installation directory. `pip install -r requirements.txt` is only needed after the initial
+setup or when project dependencies change.
+
 ## The task
 
 Three 50 mL tubes in a rack hold **red, blue and green** liquid. The task names a color, and the
@@ -49,7 +119,7 @@ meters; liquid volumes are in µL.
 
 | | |
 |---|---|
-| source | white rack with three 50 mL conical tubes (`tube_1..3`, left to right seen from the front), 30 mL each. Front-left, 0.32 m from the base. |
+| source | white rack with three 50 mL conical tubes (`tube_1..3`, left to right seen from the front), 30 mL each. Each opening has a visual-only ring matching its liquid color, intended as the RGB targeting marker. Front-left, 0.32 m from the base. |
 | destination | clear glass dish, 70 mm across × 45 mm tall (`dish`), starts empty. Front-right, 0.32 m from the base. The two stations are 0.30 m apart. |
 
 ### Robot: Kinova Gen3 lite

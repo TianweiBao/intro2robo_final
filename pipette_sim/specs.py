@@ -109,6 +109,10 @@ class ContainerSpec:
 # Source: one row of three 50 mL conical tubes (e.g. Falcon 352070: ~29.1 mm OD, 115 mm long).
 TUBE_50ML = ContainerSpec(radius=0.0135, depth=0.114, cone_height=0.020)
 TUBE_WALL = 0.0012
+# Visual-only colored annulus at each tube rim. The ring is the intended camera target for
+# identifying and centering over a tube without obscuring its open interior.
+TUBE_TARGET_RING_WIDTH = 0.0035
+TUBE_TARGET_RING_HEIGHT = 0.0030
 N_TUBES = 3
 TUBE_RACK_PITCH = 0.042
 TUBE_RACK_BASE = 0.004             # tubes stand on this plate

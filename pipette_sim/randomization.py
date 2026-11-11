@@ -105,6 +105,8 @@ def randomize(sim: PipetteSim, rng: np.random.Generator, cfg: RandomizationConfi
     for c in sim.containers.values():
         c.rgb = np.clip(c.rgb + rng.uniform(-cfg.liquid_color_jitter, cfg.liquid_color_jitter, 3), 0, 1)
         sim.visuals.update_container(c)
+        if c.name in TUBES:
+            sim.set_target_ring_color(c.name, c.rgb)
     for lid in range(m.nlight):
         m.light_diffuse[lid] *= rng.uniform(*cfg.light_scale)
         m.light_pos[lid] += rng.uniform(-cfg.light_pos_jitter, cfg.light_pos_jitter, 3)
