@@ -1,0 +1,9 @@
+<mujocoinclude>
+  <material name="gripper_gray" rgba="0.803 0.824 0.820 1" specular=".4" shininess=".4" />
+  <material name="gripper_blue" rgba="0 0.055 0.525 1" specular=".3" />
+  <mesh name="gripper_base_link_mesh" file="../gen3_lite_2f/gripper_base_link.STL" />
+  <mesh name="gripper_right_finger_prox_link_mesh" file="../gen3_lite_2f/right_finger_prox_link.STL" />
+  <mesh name="gripper_right_finger_dist_link_mesh" file="../gen3_lite_2f/right_finger_dist_link.STL" />
+  <mesh name="gripper_left_finger_prox_link_mesh" file="../gen3_lite_2f/left_finger_prox_link.STL" />
+  <mesh name="gripper_left_finger_dist_link_mesh" file="../gen3_lite_2f/left_finger_dist_link.STL" />
+</mujocoinclude>

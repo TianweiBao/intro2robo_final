@@ -10,6 +10,22 @@ from dataclasses import dataclass
 
 UL = 1e-9  # cubic meters per microliter
 
+# Stock Gen3 lite 2F gripper (Kinova ros2_kortex description).
+# One driver angle in radians; larger values close the fingers. Joint order is
+# also the order of the gripper subtree in models/gen3_lite_gripper.xml.
+GRIPPER_JOINTS = ("gripper_right_finger_bottom_joint", "gripper_right_finger_tip_joint",
+                  "gripper_left_finger_bottom_joint", "gripper_left_finger_tip_joint")
+GRIPPER_OPEN = 0.0
+GRIPPER_CLOSED = 0.85
+GRIPPER_READY = 0.6174  # ~42 mm pad-face opening around the provisional upper clamp
+
+
+def gripper_joint_positions(angle: float) -> tuple[float, float, float, float]:
+    """Stock mechanism's driver and three mimic angles (radians)."""
+    tip = -0.1 - 0.276 * angle
+    return angle, tip, angle, tip
+
+
 # ----------------------------------------------------------------------------------------------
 # Pipette: standard manual 1000 uL pipette, plunger pressed by a linear actuator, tip always on
 # ----------------------------------------------------------------------------------------------
@@ -18,7 +34,7 @@ TIP_SEAT_DEPTH = 0.012             # the nozzle end sits this far inside the tip
 TIP_LENGTH = 0.076
 TIP_TOP_Z = NOZZLE_Z - TIP_SEAT_DEPTH          # 0.191
 TIP_END_Z = TIP_TOP_Z + TIP_LENGTH             # 0.267
-PIPETTE_AXIS_OFFSET = 0.075        # pipette axis in front of the flange face center
+PIPETTE_AXIS_OFFSET = 0.149        # provisional pipette axis at stock finger pads, ahead of flange
 
 PLUNGER_FIRST_STOP = 0.010         # plunger travel (m) that displaces the nominal 1000 uL
 PLUNGER_BLOWOUT = 0.013            # second stop

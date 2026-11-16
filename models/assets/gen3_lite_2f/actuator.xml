@@ -1,0 +1,3 @@
+<mujocoinclude>
+  <position name="gripper" joint="gripper_right_finger_bottom_joint" kp="20" kv="0.2" ctrlrange="0 .85" forcerange="-10 10" />
+</mujocoinclude>

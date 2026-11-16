@@ -19,7 +19,8 @@ ARM_JOINTS = tuple(f"joint_{i}" for i in range(1, 7))
 HEADING_OFFSET = -np.pi / 2
 
 # Elbow-up posture, pipette vertical, tip end at (0.30, 0, 0.25), default heading. Default IK seed.
-READY_Q = np.array([0.5988, -0.3574, 0.9429, -0.1809, 2.1462, -0.3222])
+READY_Q = np.array([0.7741591559, -0.5376890975, 0.6830446224,
+                    -0.3235491683, 2.2872503526, -0.4721091127])
 
 
 def default_heading(target: np.ndarray) -> float:

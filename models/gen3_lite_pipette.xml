@@ -1,6 +1,7 @@
 <!--
-  Kinova Gen3 lite (6-DoF) holding a standard manual 1000 uL micropipette in a clamp, with a linear
-  actuator pressing the plunger button and an Intel RealSense D405 wrist camera.
+  Kinova Gen3 lite (6-DoF) with the stock Gen3 lite 2F gripper. The existing manual 1000 uL
+  pipette/actuator/clamp/D405 assembly is a PROVISIONAL held tool while Connar's CAD is pending.
+  The gripper is articulated; the held assembly has a fixed, no-slip grasp transform.
 
   Arm kinematics, joint limits and torque limits: Kinova ros_kortex
     kortex_description/arms/gen3_lite/6dof/urdf/gen3_lite_macro.xacro (BSD-3, see assets/gen3_lite/LICENSE).
@@ -9,13 +10,14 @@
   Collision geometry: hand-fitted capsules (meshes are visual only) to keep simulation fast.
 
   Collision bit masks used throughout the project (contype / conaffinity):
-    1 ENV   bench, tube rack, dish     contype=1  conaffinity=14 (ARM|TOOL|TIP)
-    2 ARM   robot links                contype=2  conaffinity=5  (ENV|TOOL)
+    1 ENV   bench, tube rack, dish     contype=1  conaffinity=30 (ARM|TOOL|TIP|GRIPPER)
+    2 ARM   robot links                contype=2  conaffinity=21 (ENV|TOOL|GRIPPER)
     4 TOOL  pipette, clamp, camera     contype=4  conaffinity=3  (ENV|ARM)
     8 TIP   the pipette tip            contype=8  conaffinity=3  (ENV|ARM)
+   16 GRIPPER stock gripper            contype=16 conaffinity=15 (ENV|ARM|TOOL|TIP)
 
-  Tool layout. A mounting plate on the flange holds the pipette vertically, perpendicular to the
-  flange axis and 75 mm in front of the flange face. Body "pipette" has its origin on the pipette
+  Provisional tool layout. The stock fingers hold the old assembly at the upper clamp, with the
+  pipette axis perpendicular to the flange axis. Body "pipette" has its origin on the pipette
   axis level with the flange center, +z pointing down the pipette toward the tip and +x pointing
   away from the flange (the side the camera is on):
     z = -0.170 .. -0.070   linear actuator; its rod pushes the plunger button
@@ -44,7 +46,7 @@
         <geom type="mesh" contype="0" conaffinity="0" group="2" material="kinova_white"/>
       </default>
       <default class="collision">
-        <geom type="capsule" group="3" contype="2" conaffinity="5" rgba="0.9 0.4 0.4 0.5"/>
+        <geom type="capsule" group="3" contype="2" conaffinity="21" rgba="0.9 0.4 0.4 0.5"/>
       </default>
       <default class="large_actuator">
         <position kp="300" kv="30"/>
@@ -75,6 +77,7 @@
   </default>
 
   <asset>
+    <include file="assets/gen3_lite_2f/assets.xml"/>
     <material name="kinova_white" rgba="0.80 0.82 0.82 1" specular="0.4" shininess="0.4"/>
     <material name="adapter_gray" rgba="0.18 0.19 0.21 1" specular="0.2"/>
     <material name="aluminum" rgba="0.70 0.72 0.75 1" specular="0.6" shininess="0.5"/>
@@ -162,11 +165,10 @@
                 <body name="end_effector_link" pos="-0.105 0 0.0285" quat="0.7071068 0 -0.7071068 0" gravcomp="1">
                   <joint name="joint_6" class="small_joint" range="-2.6 2.6"/>
                   <site name="flange" pos="0 0 0" size="0.004" group="4"/>
-                  <!-- flange adapter (sleeves over the wrist output like Kinova's gripper) -->
-                  <geom name="adapter" class="tool" type="cylinder" size="0.0345 0.0215" pos="0 0 0.0215"
-                    material="adapter_gray" mass="0.05"/>
+                  <include file="gen3_lite_gripper.xml"/>
 
-                  <body name="pipette" pos="0 0 0.075" xyaxes="0 0 1 0 -1 0" gravcomp="1">
+                  <!-- Fixed grasp proxy, not Connar's missing mesh or a frictional grasp simulation. -->
+                  <body name="pipette" pos="0 0 0.149" xyaxes="0 0 1 0 -1 0" gravcomp="1">
                     <!-- mounting plate, actuator and clamps -->
                     <geom name="mount_plate" class="tool" type="box" size="0.003 0.025 0.145" pos="-0.029 0 -0.025"
                       material="aluminum" mass="0.05"/>
@@ -239,6 +241,16 @@
     </body>
   </worldbody>
 
+  <contact>
+    <!-- Intentional contact between the stock fingers and the rigidly held proxy assembly. -->
+    <exclude body1="pipette" body2="gripper_right_finger_prox_link"/>
+    <exclude body1="pipette" body2="gripper_right_finger_dist_link"/>
+    <exclude body1="pipette" body2="gripper_left_finger_prox_link"/>
+    <exclude body1="pipette" body2="gripper_left_finger_dist_link"/>
+  </contact>
+  <equality>
+    <include file="assets/gen3_lite_2f/equality.xml"/>
+  </equality>
   <actuator>
     <position name="joint_1" class="large_actuator" joint="joint_1" ctrlrange="-2.68 2.68" forcerange="-10 10"/>
     <position name="joint_2" class="large_actuator" joint="joint_2" ctrlrange="-2.61 2.61" forcerange="-14 14"/>
@@ -246,6 +258,7 @@
     <position name="joint_4" class="small_actuator" joint="joint_4" ctrlrange="-2.6 2.6" forcerange="-7 7"/>
     <position name="joint_5" class="small_actuator" joint="joint_5" ctrlrange="-2.53 2.53" forcerange="-7 7"/>
     <position name="joint_6" class="small_actuator" joint="joint_6" ctrlrange="-2.6 2.6" forcerange="-7 7"/>
+    <include file="assets/gen3_lite_2f/actuator.xml"/>
     <position name="plunger" class="plunger_motor" joint="plunger" ctrlrange="0 0.013" forcerange="-40 40"/>
   </actuator>
 </mujoco>

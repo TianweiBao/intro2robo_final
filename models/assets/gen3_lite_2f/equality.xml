@@ -1,0 +1,5 @@
+<mujocoinclude>
+  <joint name="gripper_right_finger_tip_joint_mimic" joint1="gripper_right_finger_tip_joint" joint2="gripper_right_finger_bottom_joint" polycoef="-0.1 -0.276 0 0 0" solref=".002 1" solimp=".999 .999 .001" />
+  <joint name="gripper_left_finger_bottom_joint_mimic" joint1="gripper_left_finger_bottom_joint" joint2="gripper_right_finger_bottom_joint" polycoef="0.0 1.0 0 0 0" solref=".002 1" solimp=".999 .999 .001" />
+  <joint name="gripper_left_finger_tip_joint_mimic" joint1="gripper_left_finger_tip_joint" joint2="gripper_right_finger_bottom_joint" polycoef="-0.1 -0.276 0 0 0" solref=".002 1" solimp=".999 .999 .001" />
+</mujocoinclude>

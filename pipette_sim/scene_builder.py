@@ -22,7 +22,7 @@ from .ik import READY_Q
 from .liquid import LIQUID_LIFT, liquid_column
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
-ENV, ARM, TOOL, TIP = 1, 2, 4, 8
+ENV, ARM, TOOL, TIP, GRIPPER = 1, 2, 4, 8, 16
 
 
 @dataclass
@@ -191,7 +191,10 @@ def build_scene_xml(cfg: SceneConfig | None = None) -> str:
     r_out = S.DISH.radius + S.DISH_WALL
     mesh_xml.append(_shell_mesh("dish_trim", r_out + 0.0015, r_out + 0.0002, 0.004, n=48))
 
-    ready = _f(*READY_Q)  # keyframe: arm in READY_Q, plunger at rest
+    # Subtree qpos order: arm, four stock finger joints, plunger.
+    # Actuator order: arm, gripper driver, plunger. Runtime resolves actuator names.
+    ready_qpos = _f(*READY_Q, *S.gripper_joint_positions(S.GRIPPER_READY), 0)
+    ready_ctrl = _f(*READY_Q, S.GRIPPER_READY, 0)
     # "side" (policy camera) sits at the front-right corner of the bench, so the source rack and the
     # dish appear side by side; from a true side view they would line up behind each other.
     side_pos, overview_pos, top_pos = (0.85, -0.25, 0.45), (1.20, -0.12, 0.62), (0.22, 0.0, 0.95)
@@ -212,8 +215,8 @@ def build_scene_xml(cfg: SceneConfig | None = None) -> str:
         '  <map znear="0.01" zfar="20"/>',
         '</visual>',
         '<default>',
-        f'  <default class="env"><geom contype="{ENV}" conaffinity="{ARM | TOOL | TIP}" group="3" rgba="0.6 0.6 0.6 0.4"/></default>',
-        f'  <default class="env_both"><geom contype="{ENV}" conaffinity="{ARM | TOOL | TIP}" group="2"/></default>',
+        f'  <default class="env"><geom contype="{ENV}" conaffinity="{ARM | TOOL | TIP | GRIPPER}" group="3" rgba="0.6 0.6 0.6 0.4"/></default>',
+        f'  <default class="env_both"><geom contype="{ENV}" conaffinity="{ARM | TOOL | TIP | GRIPPER}" group="2"/></default>',
         '  <default class="env_vis"><geom contype="0" conaffinity="0" group="2" density="0"/></default>',
         '  <default class="liquid"><geom type="cylinder" contype="0" conaffinity="0" group="1" density="0" material="liquid"/></default>',
         '</default>',
@@ -243,7 +246,7 @@ def build_scene_xml(cfg: SceneConfig | None = None) -> str:
         *[f'  {line}' for line in _dish(cfg)],
         '</worldbody>',
         '<keyframe>',
-        f'  <key name="ready" qpos="{ready} 0" ctrl="{ready} 0"/>',
+        f'  <key name="ready" qpos="{ready_qpos}" ctrl="{ready_ctrl}"/>',
         '</keyframe>',
         '</mujoco>',
     ]

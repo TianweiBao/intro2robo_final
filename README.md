@@ -1,14 +1,20 @@
 # Automated micropipette transfer with a Kinova Gen3 lite (MuJoCo)
 
-Intro to Robotics final project. A Kinova Gen3 lite holds a standard manual micropipette in a clamp.
+Intro to Robotics final project. A Kinova Gen3 lite's stock two-finger gripper holds a provisional
+manual micropipette/clamp assembly.
 A linear actuator presses the pipette's plunger. The robot finds the tube holding the requested
 liquid color, draws 1000 µL, carries it over, and dispenses it into a dish. This is a prototype for
 automating repetitive pipetting such as media exchange in cell culture.
 
-This repository holds the simulation. **Phase 1, the task scene, is done.** The controller and the
-vision policy come next (see [Roadmap](#roadmap)).
+This repository holds the simulation. The stock gripper is integrated and the scripted transfer
+works. **Connar's custom tool is pending:** its committed Xacro references a missing mesh and
+does not yet define moving joints. See [questions for Connar](docs/pipette_questions.md).
+The existing pipette geometry, stroke, grasp and D405 camera remain provisional; the proposed
+D435i wrist mount is a later update after the hardware arrangement is confirmed.
 
 ![The three phases of the task](docs/task_phases.png)
+
+The phase illustration above shows the earlier tool setup; the current stock gripper is shown below.
 
 ## Quick start
 
@@ -16,7 +22,8 @@ vision policy come next (see [Roadmap](#roadmap)).
 conda activate mujoco
 pip install -r requirements.txt     # mujoco 3.17, numpy, imageio(+ffmpeg), pillow
 
-python scripts/check_scene.py       # all checks + images + video into outputs/ (~20 s, headless)
+python scripts/check_scene.py       # all checks + images + video into outputs/ (headless)
+python scripts/check_gripper.py     # articulated gripper and independent command checks
 python scripts/view_scene.py --demo # watch red, blue, then green being moved in the MuJoCo viewer
 python scripts/build_scene.py       # regenerate models/scene.xml after changing the layout
 ```
@@ -64,11 +71,28 @@ meters; liquid volumes are in µL.
 - **Ready pose:** keyframe `ready` is an elbow-up posture with the pipette vertical and the tip end
   at (0.30, 0, 0.25).
 
-### Pipette tool (like the reference picture)
+### Stock Gen3 lite two-finger gripper
 
-A mounting plate on the flange holds the pipette vertically. The pipette is perpendicular to the
-flange axis and 75 mm in front of the flange face. Positions below are along the pipette, measured
-down from the flange height:
+The meshes, joint origins, inertias and mimic relations come from Kinova's `ros2_kortex`
+hardware description, pinned in [the asset provenance](models/assets/gen3_lite_2f/README.md).
+Four finger joints share one position actuator: the left bottom follows the right bottom;
+both tip joints follow `-0.1 - 0.276 * driver`. The simulated driver range is 0–0.85 rad,
+increasing toward closure. Position gains and damping are simulation settings, not a hardware
+controller identification. The stock assembly has a modeled mass of 0.198 kg.
+
+![Stock gripper holding the provisional tool](docs/stock_gripper.png)
+
+The ready driver target is 0.6174 rad, giving about 42 mm between reference points on the pad
+faces around the proxy's upper clamp. The pipette assembly has a fixed no-slip transform to the
+flange while the fingers articulate. Opening the fingers does not release or drop the tool.
+Finger/proxy-body contacts are excluded deliberately; gripper contacts with the environment,
+arm, tip and camera are checked. Stock link collision meshes use convex hulls.
+
+### Provisional pipette tool
+
+The stock gripper holds the old clamp assembly with the pipette perpendicular to the flange
+axis and 149 mm in front of the flange face. This is a placeholder grasp pending the custom CAD.
+Positions below are along the pipette, measured down from the flange height:
 
 | part | detail |
 |---|---|
@@ -77,12 +101,11 @@ down from the flange height:
 | manual 1000 µL pipette | handle held by two clamps; nozzle end at 203 mm (site `nozzle`) |
 | tip | 1000 µL, 76 mm long, permanently attached; its end at 267 mm (site `tip_end`) is the point the controller steers |
 | wrist camera | Intel RealSense D405 on the lower clamp, on the far side of the pipette from the flange. It looks down the pipette, tilted 10° toward it, so the tip end sits just below the image center. |
-| mass | 0.381 kg for adapter, plate, actuator, pipette, tip and camera (Gen3 lite payload: 0.5 kg) |
+| mass | 0.331 kg for the external proxy assembly: plate, clamps, actuator, pipette, tip and D405; stock gripper mass is accounted for separately. Connar's exported 4.06 kg remains unverified. |
 
 **Holding direction.** The arm holds the pipette from the side: the flange axis is horizontal and
-tangential, so the wrist is on the pipette's right as seen from the front. With the flange pointing
-away from the robot, the wrist folds back against the base and joints end up within 3° of their
-limits. Holding from the side keeps every working pose at least 22° from the limits.
+tangential, so the wrist is on the pipette's right as seen from the front. This setup has at least
+14° margin at the 13 checked working poses.
 
 ### Cameras
 
@@ -92,7 +115,7 @@ limits. Holding from the side keeps every working pose at least 22° from the li
 | `side` | Fixed at (0.85, −0.25, 0.45) at the front-right of the bench, looking at the workspace. It shows the rack and dish side by side; a camera directly to the side would line them up behind each other. | `fovy=45` | policy |
 | `overview`, `top` | fixed | | documentation |
 
-![Camera views at the ready pose](docs/scene_views.png)
+Updated camera views are generated in `outputs/view_*.png` by `scripts/check_scene.py`.
 
 ### Liquid model
 
@@ -111,17 +134,18 @@ and the liquid is drawn as non-colliding shapes resized to match.
 `sim.events` counts what later rewards will need:
 - volumes: aspirated, dispensed and spilled µL, and µL drawn from the wrong tube
 - steps with the robot touching labware or the bench
-- steps with the pipette or camera touching the arm (self-collision)
+- steps with unintended contacts between the arm, gripper and tool (self-collision)
 - steps with the tip touching anything
 
 ### Collision groups (`contype` / `conaffinity`)
 
 | bit | group | collides with |
 |---|---|---|
-| 1 | ENV: bench, rack, tubes, dish | ARM, TOOL, TIP |
-| 2 | ARM: robot links | ENV, TOOL, TIP |
-| 4 | TOOL: plate, actuator, pipette, clamps, camera | ENV, ARM |
-| 8 | TIP | ENV, ARM |
+| 1 | ENV: bench, rack, tubes, dish | ARM, TOOL, TIP, GRIPPER |
+| 2 | ARM: robot links | ENV, TOOL, TIP, GRIPPER |
+| 4 | TOOL: plate, actuator, pipette, clamps, camera | ENV, ARM, GRIPPER (except intentional grasp exclusions) |
+| 8 | TIP | ENV, ARM, GRIPPER |
+| 16 | GRIPPER: stock palm/fingers | ENV, ARM, TOOL, TIP |
 
 Tube and dish walls are rings of thin boxes. That leaves the tops open, so the tip can go inside.
 
@@ -148,6 +172,7 @@ info = randomize(sim, np.random.default_rng(0))    # shuffled colors, random tar
 
 **Lower level:**
 - `sim.set_arm_targets(q)`: 6 joint angles for the position actuators
+- `sim.set_gripper(angle)`: independent stock gripper driver target in radians (0 open, 0.85 closed)
 - `sim.set_plunger(m)`: plunger target in meters
 - `sim.step()`: advance one control step
 - `pipette_sim.ik.VerticalIK`: joint angles for a tip-end position with the pipette vertical
@@ -164,12 +189,12 @@ info = randomize(sim, np.random.default_rng(0))    # shuffled colors, random tar
 
 ## Verification (`scripts/check_scene.py`)
 
-All 9 checks pass:
+All 9 scene checks pass with the stock gripper and provisional held tool:
 
 - **Payload and stability:** the tool is within payload, and the arm holds the ready pose with no
   contacts.
 - **Reach:** all 13 working poses can be reached without collisions or self-collisions: above, at the
-  surface and at the deepest point of each tube, and at the dish. Every one is at least 22° from all
+  surface and at the deepest point of each tube, and at the dish. Every one is at least 14° from all
   joint limits.
 - **Each color:** the scripted task takes red, blue and green from the right tube. It moves exactly
   1000 µL into the dish with no spill and no contact of any kind, in about 42 s of simulated time
@@ -177,8 +202,12 @@ All 9 checks pass:
 - **Randomized scenes:** 20 scenes have no overlaps or contacts, and every tube and the dish can be
   reached. The scripted task succeeds in 6 of 6 scenes with shuffled colors and moved labware.
 
-**Speed** (one process): 19,000 control steps/s for physics alone (380× real time). With the wrist and
-side images rendered every step, about 1,700 steps/s.
+`scripts/check_gripper.py` also passes 18 checks covering joint coupling, symmetric open/close
+motion, independent actuator commands, fixed tool pose, settling and gripper collision reporting.
+These checks validate the simulated mechanism; they do not establish a frictional grasp or the
+custom tool's hardware feasibility. Performance is reported for the current machine in the report.
+The gripper update was verified with the available MuJoCo 4.0.0 environment; the existing
+`requirements.txt` pin to 3.17.0 has not been separately revalidated.
 
 Outputs:
 - `outputs/check_report.md`: the report
@@ -188,12 +217,12 @@ Outputs:
 ## Sim-to-real notes
 
 **Hardware to build:**
-- a flange plate with two pipette clamps (3D-printed or aluminum)
-- a small position-controlled linear actuator that can press the plunger through to blow-out (stroke
-  at least 13 mm)
-- a D405 bracket
+- Connar's complete CAD, moving-part meshes, measured/estimated mass and stock-finger grasp geometry
+- the separate pipette actuator/controller specification and measured stroke/volume calibration
+- a wrist camera bracket and cable route (D435i recommended; camera replacement is pending)
 
-Measure your pipette's real plunger stroke and update `PLUNGER_FIRST_STOP` / `PLUNGER_BLOWOUT` in
+The current 10/13 mm plunger stops are provisional. Measure the real stroke and update
+`PLUNGER_FIRST_STOP` / `PLUNGER_BLOWOUT` in
 `pipette_sim/specs.py`. Update the clamp and camera positions in `models/gen3_lite_pipette.xml` to
 match what you build.
 
@@ -218,8 +247,10 @@ limits Cartesian speed to 0.3 m/s; the scripted motions use ≤ 0.15 m/s.
 ```
 models/
   gen3_lite_pipette.xml   robot + clamped pipette + actuator + D405 (hand-written)
+  gen3_lite_gripper.xml   stock gripper subtree (included at the tool flange)
   scene.xml               full scene (GENERATED by scripts/build_scene.py)
   assets/gen3_lite/       Kinova meshes + license
+  assets/gen3_lite_2f/    stock gripper meshes, MJCF includes, pinned source + license
 pipette_sim/              simulation package (see its __init__ docstring)
 scripts/                  build_scene.py, check_scene.py, view_scene.py
 docs/                     README images
@@ -228,7 +259,7 @@ outputs/                  check results (git-ignored)
 
 ## Roadmap
 
-1. **Task scene.** Done.
+1. **Task scene.** Stock gripper integrated; custom tool CAD and final wrist camera mount pending.
 2. **Controller and scripted expert.** A Cartesian tip-velocity controller and the three-phase state
    machine. This is the control-code deliverable and the demo, and it records demonstrations.
 3. **Learning environment.** A Gymnasium environment that runs many simulations in parallel.

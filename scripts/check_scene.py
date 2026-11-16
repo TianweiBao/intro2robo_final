@@ -105,14 +105,16 @@ def check_model(sim: PipetteSim, rep: Report) -> None:
     m = sim.model
     rep.section("1. Model")
     robot_mass = m.body_subtreemass[m.body("base_link").id]
-    tool_mass = m.body_subtreemass[m.body("end_effector_link").id]
+    tool_mass = m.body_subtreemass[m.body("pipette").id]
+    gripper_mass = m.body_subtreemass[m.body("gripper_base_link").id]
     rep.add(f"- nq={m.nq}, nv={m.nv}, actuators={m.nu}, bodies={m.nbody}, geoms={m.ngeom}, "
             f"cameras={[m.cam(i).name for i in range(m.ncam)]}")
     rep.add(f"- timestep {m.opt.timestep * 1e3:.1f} ms, control step {sim.control_dt * 1e3:.0f} ms "
             f"({sim.n_substeps} substeps), integrator implicitfast")
-    rep.add(f"- robot mass {robot_mass:.3f} kg, of which tool {tool_mass:.3f} kg "
-            f"(adapter, plate, actuator, manual pipette, tip, D405)")
-    rep.check("tool within the Gen3 lite payload (0.5 kg)", tool_mass < 0.5, f"{tool_mass:.3f} kg")
+    rep.add(f"- robot mass {robot_mass:.3f} kg; stock gripper {gripper_mass:.3f} kg; "
+            f"external proxy assembly {tool_mass:.3f} kg (plate, clamps, actuator, manual pipette, tip, D405)")
+    rep.check("provisional external tool within the Gen3 lite payload (0.5 kg)", tool_mass < 0.5,
+              f"{tool_mass:.3f} kg; Connar's assembly mass is still unverified")
     rep.add(f"- tubes (left to right): {sim.tube_colors}; destination: dish")
 
 

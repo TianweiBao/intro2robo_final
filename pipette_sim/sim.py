@@ -1,7 +1,7 @@
 """Runtime wrapper around models/scene.xml.
 
-MuJoCo simulates the arm, the pipette plunger and contacts. This class adds what MuJoCo does not
-model: liquid moving between the tubes, the tip and the dish as the plunger moves.
+MuJoCo simulates the arm, the stock gripper, the pipette plunger and contacts. This class adds
+what MuJoCo does not model: liquid moving between the tubes, the tip and the dish as the plunger moves.
 
 Task: three tubes hold red, blue and green liquid. The target color selects the source tube, and
 the destination is the dish.
@@ -10,6 +10,7 @@ Typical use:
     sim = PipetteSim()
     sim.reset(target_color="blue")
     sim.set_arm_targets(q)        # 6 joint angles for the arm's position actuators
+    sim.set_gripper(0.3)          # gripper driver angle in radians; increasing closes the fingers
     sim.set_plunger(0.010)        # plunger travel in m (0.010 = first stop = 1000 uL)
     sim.step()                    # one control step (control_dt seconds)
 """
@@ -24,9 +25,10 @@ import numpy as np
 from . import specs as S
 from .ik import ARM_JOINTS
 from .liquid import Container, LiquidVisuals, mix_rgb
+from .specs import GRIPPER_JOINTS
 
 SCENE_XML = Path(__file__).resolve().parent.parent / "models" / "scene.xml"
-ENV, ARM, TOOL, TIP = 1, 2, 4, 8
+ENV, ARM, TOOL, TIP, GRIPPER = 1, 2, 4, 8, 16
 
 TUBES = tuple(f"tube_{i}" for i in range(1, S.N_TUBES + 1))
 CONTAINERS = TUBES + ("dish",)
@@ -42,8 +44,8 @@ class Events:
     dispensed_ul: float = 0.0
     spilled_ul: float = 0.0
     wrong_source_ul: float = 0.0       # drawn from a tube that does not hold the target color
-    robot_collision_steps: int = 0     # arm or pipette touching the bench or labware
-    self_collision_steps: int = 0      # pipette or camera touching the arm
+    robot_collision_steps: int = 0     # arm, gripper or pipette touching the bench or labware
+    self_collision_steps: int = 0      # unintended arm, gripper and tool contacts
     tip_contact_steps: int = 0         # tip touching a tube wall, the dish or the bench
     log: list[str] = field(default_factory=list)
 
@@ -58,6 +60,12 @@ class PipetteSim:
 
         self.arm_qadr = np.array([m.joint(j).qposadr[0] for j in ARM_JOINTS])
         self.arm_dadr = np.array([m.joint(j).dofadr[0] for j in ARM_JOINTS])
+        self.act_arm = np.array([m.actuator(j).id for j in ARM_JOINTS])
+        self.act_gripper = m.actuator("gripper").id
+        self.gripper_qadr = np.array([m.joint(j).qposadr[0] for j in GRIPPER_JOINTS])
+        self.gripper_dadr = np.array([m.joint(j).dofadr[0] for j in GRIPPER_JOINTS])
+        self.gripper_range = m.actuator_ctrlrange[self.act_gripper].copy()
+        self.gripper_pad_sites = [m.site(f"gripper_{side}_pad").id for side in ("left", "right")]
         self.act_plunger = m.actuator("plunger").id
         self.tip_end_site = m.site("tip_end").id
         self.nozzle_site = m.site("nozzle").id
@@ -135,7 +143,43 @@ class PipetteSim:
         return self.data.qpos[self.arm_qadr].copy()
 
     def set_arm_targets(self, q) -> None:
-        self.data.ctrl[:6] = q
+        """Set six arm joint targets in radians, preserving the gripper and plunger commands."""
+        q = np.asarray(q, dtype=float)
+        if q.shape != (len(ARM_JOINTS),) or not np.isfinite(q).all():
+            raise ValueError("arm targets must be six finite joint angles in radians")
+        self.data.ctrl[self.act_arm] = q
+
+    @property
+    def gripper_q(self) -> np.ndarray:
+        """Four gripper joint angles (right driver, right tip, left bottom, left tip), in radians."""
+        return self.data.qpos[self.gripper_qadr].copy()
+
+    @property
+    def gripper_pos(self) -> float:
+        """Measured right-bottom driver angle in radians; increasing closes the fingers."""
+        return float(self.data.qpos[self.gripper_qadr[0]])
+
+    @property
+    def gripper_target(self) -> float:
+        """Commanded gripper driver angle in radians."""
+        return float(self.data.ctrl[self.act_gripper])
+
+    @property
+    def gripper_aperture(self) -> float:
+        """Distance in meters between the two inner pad centers."""
+        left, right = self.data.site_xpos[self.gripper_pad_sites]
+        return float(np.linalg.norm(left - right))
+
+    def set_gripper(self, angle: float) -> None:
+        """Command the stock gripper independently, in radians (0 open, 0.85 closed).
+
+        The three other joints follow the URDF mimic relations. The provisional pipette remains
+        rigidly attached while the fingers move; this interface does not simulate grasp or release.
+        """
+        angle = float(angle)
+        if not np.isfinite(angle):
+            raise ValueError("gripper target must be a finite angle in radians")
+        self.data.ctrl[self.act_gripper] = np.clip(angle, *self.gripper_range)
 
     def set_plunger(self, travel: float) -> None:
         """Plunger target in meters: 0 = rest, PLUNGER_FIRST_STOP = 1000 uL, PLUNGER_BLOWOUT = second stop.
@@ -242,19 +286,22 @@ class PipetteSim:
     def _check_contacts(self) -> None:
         robot = selfc = tip = False
         for _, _, t in self._contact_pairs():
-            robot |= bool(t & {ARM, TOOL}) and ENV in t
-            selfc |= ARM in t and bool(t & {TOOL, TIP})
+            robot |= bool(t & {ARM, TOOL, GRIPPER}) and ENV in t
+            selfc |= ((ARM in t and bool(t & {TOOL, TIP, GRIPPER}))
+                      or (GRIPPER in t and bool(t & {TOOL, TIP})))
             tip |= TIP in t and ENV in t
         self.events.robot_collision_steps += int(robot)
         self.events.self_collision_steps += int(selfc)
         self.events.tip_contact_steps += int(tip)
 
     def contacts(self) -> list[str]:
-        """Readable list of current robot/pipette/tip contacts (robot-labware, self, tip-labware)."""
+        """Readable list of current arm/gripper/tool contacts, after intentional-pair exclusions."""
         m = self.model
         name = lambda g: m.geom(g).name or m.body(m.geom_bodyid[g]).name
         return [f"{name(g1)}<->{name(g2)}" for g1, g2, t in self._contact_pairs()
-                if (t & {ARM, TOOL} and ENV in t) or (ARM in t and t & {TOOL, TIP}) or (TIP in t and ENV in t)]
+                if (t & {ARM, TOOL, GRIPPER} and ENV in t)
+                or (ARM in t and t & {TOOL, TIP, GRIPPER})
+                or (GRIPPER in t and t & {TOOL, TIP}) or (TIP in t and ENV in t)]
 
     # ------------------------------------------------------------------------------------------
     # observations
@@ -266,6 +313,10 @@ class PipetteSim:
             "time": float(d.time),
             "arm_q": self.arm_q,
             "arm_qd": d.qvel[self.arm_dadr].copy(),
+            "gripper_q": self.gripper_q,
+            "gripper_qd": d.qvel[self.gripper_dadr].copy(),
+            "gripper_target": self.gripper_target,
+            "gripper_aperture_m": self.gripper_aperture,
             "tcp": self.tcp(),
             "tool_frame": self.tool_frame(),
             "plunger": self.plunger_pos,
